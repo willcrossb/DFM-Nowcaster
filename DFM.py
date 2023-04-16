@@ -29,7 +29,7 @@ from sklearn.linear_model import LinearRegression
 import datetime as dt
 from scipy.interpolate import interp1d
 from sklearn.decomposition import PCA
-
+wkthru = 1
 ##################################################################
 ### Helper Functions
 
@@ -223,7 +223,7 @@ def _Kfilter(Y, F, H, Q, R, F0):
 
         # updating eqns       
         
-        nu = y - (H @ Sp)   # Error based on observab;es
+        nu = y - (H @ Sp)   # Error based on observables
         f = ((H @ Pp) @ H.T) + R
         finv=np.linalg.inv(f)
         
@@ -446,14 +446,18 @@ def initializevals(GDP, Monthly, lags, lagsH, K, Qs):
     GDPnan = np.asarray(np.kron(GDP, [[np.nan], [np.nan], [1]])) # missing values for months not at end of quarter
     GDP_fill = _InterpolateNaN(GDPnan)
     cutoff = len(GDP_fill)
-
+    #GDP_fill has backfilled the quarterly number to monthly
+    #if you started with a Tx1 quarterly col vector, you end with a 3Tx1 column vector
+    
     # Standardize input data
     MonthlyDat_norm = []
     for df in Monthly:
         MonthlyDat_norm.append(_NormDframe(df[0:cutoff]))
 
+    #this will be a vector of however many monthly variables you have
     loadings = [None]*len(Monthly)
     Factors = [None]*len(Monthly)
+    
     # Get principal components
     for df,num in zip(MonthlyDat_norm, range(len(MonthlyDat_norm))):
         Factors[num], loadings[num] = _PCA_fact_load(df[0:cutoff].fillna(method='ffill'))
@@ -502,6 +506,22 @@ def initializevals(GDP, Monthly, lags, lagsH, K, Qs):
     
     ints = [listel.shape[0] for listel in loadings] # loading restrictions - which observable loads onto which number on each factor
 
+    import matplotlib.pyplot as plt
+    
+    testme=0
+    if testme:
+        for ww in range(0,K):
+            plt.plot(Factors[ww])
+            plt.title("Visualize the factors")
+        plt.show()
+        #Visualize the states
+        plt.figure()
+        plt.plot(S)
+        plt.title("States")
+        plt.show()
+        
+    
+    
     return XY, H, R, F, Q, S, ints
 
 def Gibbs_loop(XY,F, H, Q, R, S, lags, lagsH, K, Qs, s0, alpha0, L_var_prior, Ints, burn, save, GDPnorm):
@@ -701,11 +721,18 @@ class DynamicFactorModel():
         if self.MAterm == 0:
             self.Hdraw, self.Qdraw, self.Fdraw, self.Pdraw, self.Rdraw, self.Sdraw  = Gibbs_loop(self.XYcomp,F, H, Q, R, S, self.lags, self.lagsH, self.K \
                 , self.Qs, s0, alpha0, L_var_prior, ints, burn, save, self.normGDP)
+            
+            if wkthru:
+                plt.plot(self.Sdraw[:,24,:])
+                plt.show()
+                print('test')
+                
             return self.Hdraw, self.Qdraw, self.Fdraw, self.Pdraw, self.Rdraw, self.Sdraw
         elif self.MAterm == 1:
             self.Hdraw, self.Qdraw, self.Fdraw, self.Pdraw, self.Rdraw, self.Sdraw, self.Phidraw  = Gibbs_loopMA(self.XYcomp,F, H, Q, R, S, self.lags, self.lagsH, self.K \
                 , self.Qs, s0, alpha0, L_var_prior, ints, burn, save, self.normGDP)
 
+        
     def Nowcast(self, start, Horz):
         
         XY = self.XY
